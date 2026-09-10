@@ -1436,6 +1436,23 @@
  * the card, the same arrangement the table row uses, so both views answer a
  * tap in the same place: the session, not nothing.
  */
+/*
+ * Its children may shrink.
+ *
+ * A grid item's automatic minimum is its min-content, and the name and the
+ * meta line are both `white-space: nowrap`, so a long machine name set a floor
+ * the card could not go below. The card pushed the column, the column pushed
+ * the page, and a phone ended up scrolling sideways past the buttons. They
+ * were always meant to ellipsize; this is what lets them.
+ */
+.board,
+.board-column,
+.board-cards,
+.board-card,
+.board-card > * {
+  min-width: 0;
+}
+
 .board-card {
   position: relative;
   display: grid;
@@ -1518,11 +1535,34 @@
   white-space: nowrap;
 }
 
+/*
+ * The assignee on the left, the actions on the right, and room to wrap: a card
+ * that can be opened and stopped has three things here, and on a narrow column
+ * the third was pushed off the edge rather than onto the next line.
+ */
 .board-card-foot {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: space-between;
+}
+
+/* A button keeps its size; the assignee gives up width before they do. */
+.board-card-foot .session-action {
+  flex: none;
+}
+
+.board-card-foot .picker {
+  min-width: 0;
+}
+
+.board-card-head {
+  min-width: 0;
+}
+
+.board-card-head > * {
+  min-width: 0;
 }
 
 .board-card-unassigned {

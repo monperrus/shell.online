@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   PaperPlaneTilt,
+  Stop as StopIcon,
   Terminal as TerminalIcon,
+  Trash,
 } from "@phosphor-icons/react";
 import { AppShell } from "../components/AppShell";
 import { Avatar, PersonChip } from "../components/Avatar";
@@ -15,8 +17,10 @@ import { SessionClipboard } from "../components/SessionClipboard";
 import { SessionAudience } from "../components/SessionAudience";
 import {
   assignSession,
+  deleteSession,
   fetchSession,
   postComment,
+  stopSession,
   type Comment,
   type Member,
   type SessionDetail,
@@ -24,6 +28,7 @@ import {
 import { splitMentions } from "../lib/mentions";
 import { displayName, findPerson } from "../lib/people";
 import { usePageTitle } from "../lib/page-title";
+import { canRemove, canStop } from "../lib/session-view";
 import { ago, elapsed } from "../lib/time";
 
 function CommentBody({ body, members }: { body: string; members: Member[] }) {
@@ -67,7 +72,9 @@ export function Session() {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
+  const [working, setWorking] = useState("");
   const composer = useRef<HTMLTextAreaElement>(null);
+  const navigate = useNavigate();
 
   const load = useCallback(async () => {
     try {
@@ -104,6 +111,40 @@ export function Session() {
   const live = !session.closedAt;
   const canAssign =
     session.ownerUid === you.uid || you.role === "owner" || you.role === "admin";
+
+  /*
+   * Stopping and removing belong here too.
+   *
+   * They were reachable from the list and not from the session itself, so
+   * opening a session to look at it meant going back to find the buttons. On a
+   * phone this page is the one you are on.
+   */
+  async function handleStop() {
+    if (!detail?.session.deviceId) return;
+    setWorking("stop");
+    setError("");
+    try {
+      await stopSession(detail.session.deviceId, detail.session.id);
+      window.setTimeout(() => void load(), 1500);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not stop that session.");
+    } finally {
+      setWorking("");
+    }
+  }
+
+  async function handleRemove() {
+    if (!detail) return;
+    setWorking("remove");
+    setError("");
+    try {
+      await deleteSession(detail.session.id);
+      navigate("/sessions");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not remove that session.");
+      setWorking("");
+    }
+  }
 
   async function handleComment(event: FormEvent) {
     event.preventDefault();
@@ -162,6 +203,29 @@ export function Session() {
               * on a phone is the screen you are actually on.
               */}
             <SessionClipboard session={session} you={you} />
+            {canStop(session, you) && (
+              <button
+                type="button"
+                className="session-action"
+                onClick={() => void handleStop()}
+                disabled={working === "stop"}
+              >
+                <StopIcon size={15} weight="bold" />
+                {working === "stop" ? "Stopping" : "Stop"}
+              </button>
+            )}
+            {canRemove(session, you) && (
+              <button
+                type="button"
+                className="session-action"
+                onClick={() => void handleRemove()}
+                disabled={working === "remove"}
+                title="Remove from the list. The machine is not touched."
+              >
+                <Trash size={15} />
+                {working === "remove" ? "Removing" : "Remove"}
+              </button>
+            )}
           </div>
 
           <SessionAudience session={session} members={members} you={you} />

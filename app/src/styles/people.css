@@ -281,9 +281,37 @@
   max-width: 100%;
 }
 
-/* The row's actions are the point of the row; they do not get compressed. */
+/*
+ * The actions cell takes exactly the room its buttons need.
+ *
+ * `width: 1%` with nowrap content is how a table is told "size this to its
+ * content": column one asks for 100% and the rest divide what is left, and
+ * without this the actions cell was handed its *minimum* instead. Its buttons
+ * are a wrapping flex row, so a minimum-width cell wrapped them one per line
+ * and the row grew into a column of buttons.
+ */
 .table-end {
+  width: 1%;
   white-space: nowrap;
+}
+
+/*
+ * ...and they do not wrap.
+ *
+ * A wrapping flex row reports its widest single item as its minimum, so a
+ * table reads "this cell can be one button wide" and gives the rest of the
+ * width to the command. The buttons then wrapped one per line. Wrapping is
+ * there so a copy that was refused can say so underneath; in a table row it
+ * says so beside them instead.
+ */
+.table-end .session-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.table-end .copy-fallback {
+  max-width: 30ch;
+  flex-basis: auto;
 }
 
 
@@ -327,19 +355,34 @@
    tap it used to.
    --------------------------------------------------------------- */
 
-.table-row-linked {
-  position: relative;
-  cursor: pointer;
-}
-
-.table-row-linked .table-subject::after {
-  position: absolute;
-  content: "";
-  inset: 0;
-}
-
+/*
+ * The overlay is only used where the row is a block box.
+ *
+ * `position: relative` on a `table-row` is not something a browser has to
+ * honour, and WebKit does not: the containing block it should have made never
+ * existed, so `inset: 0` resolved against the page instead of the row. Every
+ * row's overlay then covered the whole window, the last one in the document
+ * sat on top of the rest, and every click anywhere on the sessions page opened
+ * that one session.
+ *
+ * Below 1000px the row is `display: block`, which positions the same way
+ * everywhere, so the stretched link is safe there and that is where it was
+ * worth having. On a desktop the target is the cell instead; see .table-subject
+ * below.
+ */
 .table-row-linked:hover .table-name {
   text-decoration: underline;
+}
+
+/*
+ * A bigger target without an overlay: the link fills its own cell, so most of
+ * the first column opens the session rather than only the few characters of
+ * the name.
+ */
+.table-row-linked .table-subject {
+  display: flex;
+  width: 100%;
+  padding: 2px 0;
 }
 
 /*
@@ -514,6 +557,22 @@
 
   .table tbody tr {
     padding: 14px 0;
+  }
+
+  /*
+   * Here the row is a block, so it can hold the overlay that makes the whole
+   * card open the session. On a phone the name alone is a few characters in a
+   * row that is otherwise empty space.
+   */
+  .table-row-linked {
+    position: relative;
+    cursor: pointer;
+  }
+
+  .table-row-linked .table-subject::after {
+    position: absolute;
+    content: "";
+    inset: 0;
   }
 
   .table td {
