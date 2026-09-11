@@ -1,0 +1,25 @@
+# Overrides for the tiramisu deployment of the accounts app.
+#
+# Symlink this next to app/docker-compose.yml; compose reads
+# docker-compose.override.yml automatically.
+#
+#   cd /opt/shell-online/repo/app
+#   ln -sf ../deploy/tiramisu/docker-compose.override.yml docker-compose.override.yml
+#
+# Upstream leaves postgres on the compose default restart policy, so a reboot
+# would bring the app back up with its store gone. The app service already
+# restarts itself.
+#
+# Note what is NOT here: the published port. The upstream file publishes
+# "${PORT:-8080}:8080", which binds 0.0.0.0 and would put the app on the public
+# internet beside nginx, unencrypted. Overriding a ports list across compose
+# files needs the !override tag, which is recent; the .env sets
+#
+#   PORT=127.0.0.1:8083
+#
+# instead, so the interpolated spec is "127.0.0.1:8083:8080" and binds
+# loopback on any compose version. See README.md.
+
+services:
+  postgres:
+    restart: unless-stopped

@@ -11,10 +11,14 @@ export SHELL_ONLINE_SERVER=https://shell.gakoy.com
 
 The relay is the same Cloudflare Worker `wrangler.example.jsonc` describes,
 running on tiramisu under `workerd` instead of on Cloudflare. It serves the
-site, the session pages, and the encrypted websocket. The accounts app
-(`app/`) is **not** deployed: it needs Firebase and PostgreSQL, and the CLI
-does not need it. Sessions are therefore anonymous — `shell login` still talks
-to the real app.shell.online unless it is pointed elsewhere too.
+site, the session pages, and the encrypted websocket.
+
+The accounts app (`app/`) is the second service, at
+**https://app.shell.gakoy.com** — accounts, linked machines, the session list,
+and the new-session form that can start an agent on any linked machine. That
+form is the only place the fork's agentknit support is reachable from a
+browser. The CLI does not need it; without it, sessions are simply anonymous.
+See [The accounts app](#the-accounts-app) below.
 
 ## What is where
 
@@ -27,6 +31,9 @@ to the real app.shell.online unless it is pointed elsewhere too.
 | systemd unit | `/etc/systemd/system/shell-online-relay.service` |
 | nginx vhost | `/etc/nginx/sites-available/shell.gakoy.com.conf` |
 | Certificate | `/etc/letsencrypt/live/shell.gakoy.com/` |
+| Accounts app | `/opt/shell-online/repo/app`, `docker compose` |
+| Accounts app config | `repo/app/.env` (not committed) |
+| Accounts app vhost | `/etc/nginx/sites-available/app.shell.gakoy.com.conf` |
 
 The unit, the vhost and the worker configuration are committed here. The copies
 on the machine are copies; edit them here and reinstall, so the machine can be
@@ -167,6 +174,103 @@ sudo systemctl restart shell-online-relay
 
 Session state lives in `/opt/shell-online/state` and survives restarts. Deleting
 it ends every persistent session; ordinary sessions are ephemeral anyway.
+
+## The accounts app
+
+Two containers on the same machine: the React client and its API in one, and
+PostgreSQL beside it. nginx terminates TLS on `app.shell.gakoy.com` and proxies
+to `127.0.0.1:8083`; the app proxies `/relay/*` on to the relay.
+
+It needs a Firebase project for sign-in. Nothing secret comes out of it: the
+server verifies Firebase ID tokens against Google's published JWKs and needs
+only the project id, and the `VITE_FIREBASE_*` values are the public web
+configuration that is compiled into the client anyway. There is no service
+account and no private key in this deployment.
+
+### 1. Firebase
+
+In the [Firebase console](https://console.firebase.google.com/), on a project
+of your own:
+
+1. **Authentication → Get started**, and enable the sign-in providers you want
+   (Google, or email/password).
+2. **Authentication → Settings → Authorized domains**, add
+   `app.shell.gakoy.com`. Sign-in fails with `auth/unauthorized-domain`
+   without it, which is the single most common way this goes wrong.
+3. **Project settings → Your apps → Web app** (register one if there is none).
+   Copy the five config values into `.env` below.
+
+### 2. DNS and certificate
+
+An A record for `app.shell` in the `gakoy.com` zone, pointing at
+`130.237.224.95`, created the same way as the relay's record above. Then,
+with the challenge-only vhost pattern from §3 of the relay build:
+
+```sh
+sudo certbot certonly --webroot -w /var/www/certbot -d app.shell.gakoy.com \
+  --non-interactive --agree-tos --register-unsafely-without-email
+```
+
+### 3. Configure and start
+
+```sh
+cd /opt/shell-online/repo/app
+cp ../deploy/tiramisu/app.env.example .env
+$EDITOR .env                       # Firebase values, POSTGRES_PASSWORD
+ln -sf ../deploy/tiramisu/docker-compose.override.yml docker-compose.override.yml
+docker compose up --build -d
+docker compose logs -f app
+```
+
+`PORT=127.0.0.1:8083` in `.env` is not a typo: the whole value is interpolated
+into the compose port spec, which is how the published port ends up bound to
+loopback without needing to override a ports list across compose files.
+
+```sh
+sudo cp ../deploy/tiramisu/nginx-app.shell.gakoy.com.conf \
+        /etc/nginx/sites-available/app.shell.gakoy.com.conf
+sudo ln -sf /etc/nginx/sites-available/app.shell.gakoy.com.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Migrations in `app/server/lib/migrations/` are applied on boot, so there is no
+separate database step.
+
+### 4. Point the CLI at it
+
+```sh
+export SHELL_ONLINE_SERVER=https://shell.gakoy.com
+export SHELL_ONLINE_ACCOUNTS=https://app.shell.gakoy.com
+export SHELL_ONLINE_WEB=https://app.shell.gakoy.com
+shell login
+```
+
+All three matter: each address defaults to production independently, so
+setting only some of them aims the rest at the real service. `shell login`
+prints which services it is using whenever they are not the production ones —
+read that line, it is the check that this worked.
+
+Say yes when it asks whether the browser may start sessions on this machine
+(or pass `--allow-remote-start`). That is what puts the machine in the web
+app's machine list, and it is a real capability: while it is on, anyone signed
+in to the account can run processes on that machine as you.
+
+### 5. Use agentknit from the browser
+
+In the app: **New session → agentknit**, pick the machine, fill in the model
+(the one required field) and optionally a task, endpoint, spec file, session to
+resume, or output cap. The form only offers agentknit on machines whose daemon
+reported finding it on `PATH`.
+
+### Updating it
+
+```sh
+cd /opt/shell-online/repo && git pull
+cd app && docker compose up --build -d
+```
+
+`--build` rather than `restart`: the Firebase values and the relay URL are
+compiled into the client, so a rebuild is what picks up a changed `.env`.
 
 ## Things worth knowing
 
