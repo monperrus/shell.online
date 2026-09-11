@@ -14,7 +14,17 @@ WorkingDirectory=/opt/shell-online/repo
 # it drives the same workerd runtime the platform uses, with Durable Objects,
 # rate limiting and Analytics Engine simulated locally. See the README for
 # what that does and does not give us.
-ExecStart=/usr/bin/npx wrangler dev \
+#
+# node is a snap on this machine. /snap/bin/node is a symlink to the snap
+# launcher, which wants a home directory of its own and refuses one outside
+# /home; the interpreter inside the snap is an ordinary ELF binary and runs
+# without any of that. So the runtime is named directly, and wrangler is run
+# as a script rather than through npx, which would only find the same file.
+#
+# The cost is that /snap/node/current moves when the snap refreshes. It is a
+# symlink, so this path keeps working across refreshes, but a major-version
+# refresh is a thing to check after.
+ExecStart=/snap/node/current/bin/node /opt/shell-online/repo/node_modules/wrangler/bin/wrangler.js dev \
     --config /opt/shell-online/repo/wrangler.tiramisu.jsonc \
     --ip 127.0.0.1 \
     --port 8788 \
@@ -27,6 +37,11 @@ Environment=CI=1
 Environment=WRANGLER_SEND_METRICS=false
 Environment=NO_COLOR=1
 
+# wrangler keeps a little configuration of its own under $HOME. The service
+# gets a home inside the deployment rather than the operator's, so that
+# ProtectHome can stay on and the whole deployment is one directory.
+Environment=HOME=/opt/shell-online/home
+
 Restart=always
 RestartSec=5s
 
@@ -36,7 +51,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/shell-online/state /opt/shell-online/repo/.wrangler
+ReadWritePaths=/opt/shell-online/state /opt/shell-online/home /opt/shell-online/repo/.wrangler
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
