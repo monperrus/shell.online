@@ -1,0 +1,49 @@
+[Unit]
+Description=shell.online relay (Cloudflare Worker under workerd)
+Documentation=https://github.com/monperrus/shell.online/blob/main/deploy/tiramisu/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=martin
+Group=martin
+WorkingDirectory=/opt/shell-online/repo
+
+# wrangler dev is the only supported way to run a Worker outside Cloudflare:
+# it drives the same workerd runtime the platform uses, with Durable Objects,
+# rate limiting and Analytics Engine simulated locally. See the README for
+# what that does and does not give us.
+ExecStart=/usr/bin/npx wrangler dev \
+    --config /opt/shell-online/repo/wrangler.tiramisu.jsonc \
+    --ip 127.0.0.1 \
+    --port 8788 \
+    --persist-to /opt/shell-online/state \
+    --show-interactive-dev-session=false
+
+# CI=1 keeps wrangler from drawing a TUI at a terminal that is not there, and
+# from prompting for anything. Nothing here talks to a Cloudflare account.
+Environment=CI=1
+Environment=WRANGLER_SEND_METRICS=false
+Environment=NO_COLOR=1
+
+Restart=always
+RestartSec=5s
+
+# The worker needs the repo (assets, bundle) and its own state directory, and
+# nothing else on the machine.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/shell-online/state /opt/shell-online/repo/.wrangler
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shell-online-relay
+
+[Install]
+WantedBy=multi-user.target

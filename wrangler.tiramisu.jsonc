@@ -1,0 +1,77 @@
+// Relay configuration for the self-hosted deployment on tiramisu
+// (shell.gakoy.com). See deploy/tiramisu/README.md.
+//
+// This is wrangler.example.jsonc with two changes: a name that says which
+// deployment it is, and no "workers_dev", which only means anything when
+// deploying to Cloudflare. Everything else matches the example, because the
+// bindings are what the worker code expects to find.
+//
+// It lives at the repository root rather than beside the other deployment
+// files because wrangler resolves "main" and the asset directory relative to
+// the configuration file. It carries no account identifiers and no
+// credentials, and is committed deliberately: the point of the deployment
+// directory is that the relay can be rebuilt from the repository alone.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "shell-online-tiramisu",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-19",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/s/*",
+      "/downloads/*",
+      "/install",
+      "/install.ps1",
+      "/llms.txt",
+      "/skill",
+      "/skill/*",
+      "/docs/*",
+      "/mobile/*",
+      "/reliability/*",
+      "/security/*",
+      "/e2ee/*",
+      "/docker/*",
+      "/"
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "SESSIONS", "class_name": "TerminalSession" },
+      { "name": "STATS", "class_name": "StatsStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TerminalSession"] },
+    { "tag": "v2", "new_sqlite_classes": ["StatsStore"] }
+  ],
+  "ratelimits": [
+    {
+      "name": "SESSION_CREATION_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "CONNECTION_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "EVENT_LIMITER",
+      "namespace_id": "1003",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "STATS_AUTH_LIMITER",
+      "namespace_id": "1004",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
+  "analytics_engine_datasets": [
+    { "binding": "ANALYTICS", "dataset": "shell_online_events" }
+  ],
+  "observability": { "enabled": true }
+}
