@@ -201,24 +201,20 @@ The app holds no passwords and has no screens for them. Setting one, changing
 one, resetting one and verifying an email address all happen on Keycloak's
 pages, which is why the sign-in screen is one button.
 
-### 1. DNS and certificates
+### 1. DNS, certificates and vhosts
 
-Two A records in the `gakoy.com` zone, both pointing at `130.237.224.95`,
-created the same way as the relay's record above:
-
-| Subdomain | For |
-|---|---|
-| `app.shell` | the accounts app |
-| `auth` | Keycloak |
-
-Then, with the challenge-only vhost pattern from §3 of the relay build:
+Two A records in the `gakoy.com` zone, both pointing at `130.237.224.95` —
+`app.shell` for the accounts app and `auth` for Keycloak — then a certificate
+for each, then the two vhosts. One script does all of it, from the workstation
+that holds the OVH credentials:
 
 ```sh
-sudo certbot certonly --webroot -w /var/www/certbot -d app.shell.gakoy.com \
-  --non-interactive --agree-tos --register-unsafely-without-email
-sudo certbot certonly --webroot -w /var/www/certbot -d auth.gakoy.com \
-  --non-interactive --agree-tos --register-unsafely-without-email
+sh deploy/tiramisu/bootstrap-accounts-dns-tls.sh
 ```
+
+It is the only part of this deployment that changes anything outside the
+machine, which is why it is separate and why it is safe to run twice: records
+that exist are left alone, and a certificate that is still valid is kept.
 
 ### 2. Configure
 
