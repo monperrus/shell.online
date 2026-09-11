@@ -95,7 +95,23 @@ sudo -n ln -sf /etc/nginx/sites-available/$AUTH_FQDN.conf /etc/nginx/sites-enabl
 sudo -n nginx -t && sudo -n systemctl reload nginx"
 
 echo "==> Check"
+# Verifying the certificate and not only the status code. A vhost whose
+# configuration is on disk but which nginx has not loaded still answers on 443
+# --- from the default server, with another host's certificate --- so a plain
+# request succeeds while the name is in fact not served. Asking whether the
+# certificate matches the name is what tells the two apart, and a reload is
+# what fixes it.
+for fqdn in "$AUTH_FQDN" "$APP_FQDN"; do
+    if ! curl -sS -o /dev/null "https://$fqdn/" 2>/dev/null; then
+        echo "    $fqdn: wrong certificate, reloading nginx"
+        ssh "$HOST" "sudo -n nginx -t && sudo -n systemctl reload nginx"
+        break
+    fi
+done
+
+status=0
 curl -sS -o /dev/null -w "    https://$AUTH_FQDN/realms/shell/.well-known/openid-configuration -> %{http_code}\n" \
-    "https://$AUTH_FQDN/realms/shell/.well-known/openid-configuration"
-curl -sS -o /dev/null -w "    https://$APP_FQDN/ -> %{http_code}\n" "https://$APP_FQDN/"
+    "https://$AUTH_FQDN/realms/shell/.well-known/openid-configuration" || status=1
+curl -sS -o /dev/null -w "    https://$APP_FQDN/ -> %{http_code}\n" "https://$APP_FQDN/" || status=1
+[ "$status" -eq 0 ] || { echo "    one of them is not answering over TLS" >&2; exit 1; }
 echo "done."
