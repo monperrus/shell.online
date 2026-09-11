@@ -12,7 +12,13 @@
  * table and in the accounts service's accepted set; a kind outside this list,
  * such as a plain terminal process, is nothing the agent reports on.
  */
-export const DETECTED_HARNESSES = new Set(["claude-code", "codex", "hermes", "openclaw"]);
+export const DETECTED_HARNESSES = new Set([
+  "agentknit",
+  "claude-code",
+  "codex",
+  "hermes",
+  "openclaw",
+]);
 
 export interface HarnessReport {
   /** What this machine's agent found. Absent until it has reported at all. */

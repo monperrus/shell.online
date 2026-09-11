@@ -287,6 +287,97 @@ export const SESSION_KINDS: SessionKind[] = [
     },
   },
   {
+    id: "agentknit",
+    title: "agentknit",
+    blurb: "A coding agent over any /chat/completions endpoint.",
+    icon: "/icons/agentknit.svg",
+    fields: [
+      {
+        name: "model",
+        label: "Model",
+        kind: "text",
+        placeholder: "qwen/qwen3-vl-32b-instruct",
+        help: "The one required argument: the model id the endpoint serves.",
+      },
+      {
+        name: "task",
+        label: "Task",
+        kind: "text",
+        placeholder: "leave empty for the REPL",
+        help: "Run one task and stop. Left empty, agentknit opens its prompt instead.",
+      },
+      {
+        name: "endpoint",
+        label: "Endpoint",
+        kind: "text",
+        placeholder: "leave empty for the agentknit default",
+        help: "Passed to --endpoint as the base URL of the completions API.",
+      },
+      {
+        name: "sessionId",
+        label: "Resume session ID",
+        kind: "text",
+        placeholder: "leave empty to start fresh",
+        help: "Passed to --session, which reloads that session's message history.",
+      },
+      {
+        name: "specPath",
+        label: "Agent spec file",
+        kind: "text",
+        placeholder: "optional",
+        help: "Passed to --spec-path, skipping name-based lookup and model probing.",
+      },
+      {
+        name: "maxTokens",
+        label: "Max output tokens",
+        kind: "text",
+        placeholder: "optional",
+        help: "Passed to --max-tokens, capping output per request.",
+      },
+      {
+        name: "nonInteractive",
+        label: "Never ask a question",
+        kind: "toggle",
+        help: "Adds --non-interactive, removing ask_user_question from the tool schema.",
+      },
+      {
+        name: "noStrictCacheProof",
+        label: "Allow prompt-cache misses",
+        kind: "toggle",
+        help: "Adds --no-strict-cache-proof. Without it a call that misses the cache fails closed.",
+      },
+      { name: "name", label: "Session name", kind: "text", placeholder: "optional" },
+    ],
+    /*
+     * Unlike the other kinds here, agentknit takes a required positional, so
+     * an empty form cannot build a runnable line. It is still emitted rather
+     * than guessed at: `agentknit` alone prints its own usage, which says what
+     * is missing better than a placeholder model would.
+     *
+     * Options go before the positionals. argparse would take them intermixed,
+     * but `--max-tokens 400 model task` and `model task --max-tokens 400` stop
+     * being the same line the moment a task begins with a dash.
+     */
+    build(values) {
+      const parts = ["agentknit"];
+      const endpoint = text(values, "endpoint");
+      if (endpoint) parts.push("--endpoint", quote(endpoint));
+      const specPath = text(values, "specPath");
+      if (specPath) parts.push("--spec-path", quote(specPath));
+      const id = text(values, "sessionId");
+      if (id) parts.push("--session", quote(id));
+      const maxTokens = text(values, "maxTokens");
+      if (maxTokens) parts.push("--max-tokens", quote(maxTokens));
+      if (on(values, "nonInteractive")) parts.push("--non-interactive");
+      if (on(values, "noStrictCacheProof")) parts.push("--no-strict-cache-proof");
+      const model = text(values, "model");
+      if (model) parts.push(quote(model));
+      const task = text(values, "task");
+      if (task) parts.push(quote(task));
+      return parts.join(" ");
+    },
+  },
+  {
     id: "terminal",
     title: "Terminal process",
     blurb: "Any command at all.",
@@ -353,6 +444,7 @@ export function kindForCommand(command: string): SessionKind {
   /* Strip any path, so /usr/local/bin/claude still reads as Claude Code. */
   const leaf = program.split(/[\\/]/).pop() ?? "";
   const byProgram: Record<string, string> = {
+    agentknit: "agentknit",
     claude: "claude-code",
     codex: "codex",
     hermes: "hermes",

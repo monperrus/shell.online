@@ -314,14 +314,14 @@ export function Terms() {
           <p>
             The daemon detects which coding-agent harnesses are installed on the
             machine by looking up their command names on the system{" "}
-            <code>PATH</code>: <code>claude</code>, <code>codex</code>,{" "}
-            <code>hermes</code> and <code>openclaw</code>. It does not execute
-            them, does not read their configuration, and does not read the
-            contents of your projects or your source files. Detection runs once
-            per daemon run.
+            <code>PATH</code>: <code>agentknit</code>, <code>claude</code>,{" "}
+            <code>codex</code>, <code>hermes</code> and <code>openclaw</code>. It
+            does not execute them, does not read their configuration, and does
+            not read the contents of your projects or your source files.
+            Detection runs once per daemon run.
           </p>
           <p>
-            The result of that lookup — the list of which of those four commands
+            The result of that lookup — the list of which of those five commands
             exist on the machine — is sent to the service, so that the web app
             can tell you which harnesses are available on that machine. That
             list is the whole of what harness discovery produces and the whole

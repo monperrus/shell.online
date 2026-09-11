@@ -4,6 +4,14 @@ All notable user-visible changes are recorded here. Versions follow [Semantic Ve
 
 ## Unreleased
 
+### Added
+
+- Detect and offer agentknit, a coding agent that runs against any
+  `/chat/completions` endpoint. The daemon looks for `agentknit` on PATH
+  alongside the other harnesses, and the new-session form builds its command
+  line: model, task, endpoint, spec file, session to resume, output cap, and
+  the two toggles that change how it behaves rather than what it talks to.
+
 ## [0.11.3] — 2026-09-11
 
 ### Changed

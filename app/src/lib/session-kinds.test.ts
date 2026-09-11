@@ -4,12 +4,13 @@ import { SESSION_KINDS, kindById, kindForCommand, quote, sessionName, unwrapShel
 const claude = kindById("claude-code")!;
 const codex = kindById("codex")!;
 const openclaw = kindById("openclaw")!;
+const agentknit = kindById("agentknit")!;
 const hermes = kindById("hermes")!;
 const terminal = kindById("terminal")!;
 
 describe("the catalogue", () => {
-  it("offers exactly the five kinds, each with an icon", () => {
-    expect(SESSION_KINDS).toHaveLength(5);
+  it("offers exactly the six kinds, each with an icon", () => {
+    expect(SESSION_KINDS).toHaveLength(6);
     for (const kind of SESSION_KINDS) {
       expect(kind.icon).toMatch(/^\/icons\//);
       expect(kind.title).toBeTruthy();
@@ -125,6 +126,51 @@ describe("OpenClaw", () => {
   });
 });
 
+describe("agentknit", () => {
+  it("builds the model alone, which is all the CLI requires", () => {
+    expect(agentknit.build({ model: "qwen/qwen3-vl-32b-instruct" })).toBe(
+      "agentknit qwen/qwen3-vl-32b-instruct",
+    );
+  });
+
+  it("puts every option before the model, and the task after it", () => {
+    expect(
+      agentknit.build({
+        model: "deepseek-v4-flash",
+        task: "list the files in /tmp",
+        endpoint: "https://openrouter.ai/api/v1",
+        nonInteractive: true,
+      }),
+    ).toBe(
+      "agentknit --endpoint https://openrouter.ai/api/v1 --non-interactive " +
+        "deepseek-v4-flash 'list the files in /tmp'",
+    );
+  });
+
+  it("keeps a task with spaces as one argument", () => {
+    expect(agentknit.build({ model: "m", task: "two words" })).toBe("agentknit m 'two words'");
+  });
+
+  it("emits the bare command when no model was given, so the CLI says so itself", () => {
+    expect(agentknit.build({})).toBe("agentknit");
+  });
+
+  it("carries the session, spec and token options", () => {
+    expect(
+      agentknit.build({
+        model: "m",
+        sessionId: "abc123",
+        specPath: "/home/me/spec.json",
+        maxTokens: "4096",
+        noStrictCacheProof: true,
+      }),
+    ).toBe(
+      "agentknit --spec-path /home/me/spec.json --session abc123 --max-tokens 4096 " +
+        "--no-strict-cache-proof m",
+    );
+  });
+});
+
 describe("Hermes", () => {
   it("defaults to the bare command", () => {
     expect(hermes.build({})).toBe("hermes");
@@ -215,6 +261,7 @@ describe("kindForCommand", () => {
     expect(kindForCommand("codex resume abc").id).toBe("codex");
     expect(kindForCommand("hermes run --task build").id).toBe("hermes");
     expect(kindForCommand("openclaw --profile work agent").id).toBe("openclaw");
+    expect(kindForCommand("agentknit qwen/qwen3-vl-32b-instruct").id).toBe("agentknit");
   });
 
   it("keeps recognising one with flags after it", () => {

@@ -130,7 +130,7 @@ export const AGENT_ONLINE_MS = 15_000;
  * nobody asked for, and that a harness added to one side is dropped until it
  * is added to all three.
  */
-const KNOWN_HARNESSES = new Set(["claude-code", "codex", "hermes", "openclaw"]);
+const KNOWN_HARNESSES = new Set(["agentknit", "claude-code", "codex", "hermes", "openclaw"]);
 
 /**
  * Only the person whose machine owns a session may mutate its encryption

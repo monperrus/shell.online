@@ -13,6 +13,7 @@ import (
 // the other is reported and then dropped, so the two lists have to be edited
 // together.
 var harnessCommands = map[string]string{
+	"agentknit":   "agentknit",
 	"claude-code": "claude",
 	"codex":       "codex",
 	"hermes":      "hermes",

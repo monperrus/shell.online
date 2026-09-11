@@ -36,9 +36,9 @@ func TestDetectHarnessesReportsOnlyWhatIsInstalled(t *testing.T) {
 	}
 }
 
-func TestDetectHarnessesReportsAllFour(t *testing.T) {
-	got := detectHarnesses(lookup("claude", "codex", "hermes", "openclaw"))
-	want := []string{"claude-code", "codex", "hermes", "openclaw"}
+func TestDetectHarnessesReportsEveryKnownOne(t *testing.T) {
+	got := detectHarnesses(lookup("agentknit", "claude", "codex", "hermes", "openclaw"))
+	want := []string{"agentknit", "claude-code", "codex", "hermes", "openclaw"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("detectHarnesses() = %v, want %v", got, want)
 	}
@@ -50,7 +50,7 @@ func TestDetectHarnessesReportsAllFour(t *testing.T) {
 func TestDetectHarnessesIgnoresCommandsItDoesNotKnow(t *testing.T) {
 	everything := func(command string) (string, error) { return "/usr/bin/" + command, nil }
 	got := detectHarnesses(everything)
-	want := []string{"claude-code", "codex", "hermes", "openclaw"}
+	want := []string{"agentknit", "claude-code", "codex", "hermes", "openclaw"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("detectHarnesses() = %v, want %v", got, want)
 	}
