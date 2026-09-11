@@ -1,21 +1,4 @@
 {
-  "_comment": [
-    "The realm shell.online signs in against. Imported on first start only:",
-    "Keycloak skips a realm that already exists rather than overwriting it, so",
-    "changes made in the admin console survive restarts and this file is the",
-    "starting point rather than the running truth.",
-    "",
-    "registrationAllowed is false: this deployment is a handful of people, and",
-    "a realm on the public internet that lets anyone register is a realm that",
-    "will have strangers in it. Accounts are created in the admin console.",
-    "Turning it on makes Keycloak show a Register link on its own sign-in page;",
-    "the app needs no change for that.",
-    "",
-    "The client is public and PKCE-only. A browser cannot keep a secret, so",
-    "there is none to keep: the proof key is what binds the authorization code",
-    "to the browser that asked for it. S256 is required rather than offered,",
-    "because a client that may fall back to `plain` gains nothing from PKCE."
-  ],
   "realm": "shell",
   "displayName": "shell.online",
   "enabled": true,

@@ -242,6 +242,11 @@ docker compose up --build -d
 docker compose logs -f keycloak app
 ```
 
+`keycloak-realm.json` carries no comments, and must not: Keycloak deserializes
+it into a `RealmRepresentation` that rejects any field it does not know, so a
+`_comment` key fails the whole import with "Unrecognized field". The reasoning
+that would have been in it is here instead.
+
 Keycloak imports `keycloak-realm.json` on its first start: realm `shell`, with
 the public PKCE client `shell-online-app` already registered against
 `https://app.shell.gakoy.com/auth/callback`. Import happens **only** when the
@@ -365,6 +370,14 @@ inside the snap. A major-version snap refresh is a thing to check after.
 `cryptography` 50 that the apt `pyOpenSSL` 21 cannot import. Root does not see
 that directory, so certbot and the renewal timer work normally. It is a shell
 environment artifact, not a broken installation.
+
+**The realm is a starting point, not the running truth.** Import happens only
+when the realm is absent, so anything changed in the admin console afterwards
+stays changed and this file stops describing it. Two decisions worth knowing
+are baked into it: registration is off, because a realm on the public internet
+that lets anyone sign up will have strangers in it, and the client is public
+and PKCE-S256, because a browser cannot keep a secret and a client that may
+fall back to `plain` gains nothing from PKCE.
 
 **This fork adds agentknit, and replaces Firebase.** See the repository
 CHANGELOG. The relay serves this fork, so it carries both; the accounts app is
