@@ -1,0 +1,12 @@
+-- Keycloak's database, beside the app's, in the same server.
+--
+-- The postgres image runs this only when it initialises an empty data
+-- directory, so on a volume that already has the app's database in it this
+-- never runs and the database has to be created by hand:
+--
+--   docker compose exec postgres createdb -U postgres keycloak
+--
+-- Two databases rather than two schemas: Keycloak owns its own migrations and
+-- runs them against whatever it finds, and a dump or restore of one service
+-- should not be able to touch the other.
+CREATE DATABASE keycloak;

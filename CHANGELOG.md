@@ -4,6 +4,18 @@ All notable user-visible changes are recorded here. Versions follow [Semantic Ve
 
 ## Unreleased
 
+### Changed
+
+- Sign in through any OpenID Connect provider instead of Firebase. The server
+  already verified ID tokens as ordinary JWTs against a published key set, so
+  it now takes the issuer, audience and key set as configuration and discovers
+  the last of them from the issuer; `FIREBASE_PROJECT_ID` remains as shorthand
+  for the Firebase spelling of the same three. The browser uses Authorization
+  Code with PKCE. Passwords, registration, password reset and email
+  verification move to the provider, which is what holds them, so the sign-in
+  screen is one button and the sign-up and reset screens are gone. This fork's
+  deployment runs Keycloak; nothing in the code is specific to it.
+
 ### Added
 
 - Detect and offer agentknit, a coding agent that runs against any

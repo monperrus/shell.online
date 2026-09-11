@@ -7,7 +7,7 @@ import {
   withoutCredentials,
   type Config,
 } from "./lib/config";
-import { createVerifier } from "./lib/firebase-token";
+import { createVerifier } from "./lib/oidc-token";
 import { createMailer } from "./lib/mail";
 import { relayProxy } from "./lib/relay-proxy";
 import { staticFiles } from "./lib/static-files";
@@ -43,7 +43,7 @@ const forward = config.relayUrl ? relayProxy(config.relayUrl) : null;
 
 const server = createAccountsServer({
   store,
-  verifyIdToken: createVerifier(config.projectId),
+  verifyIdToken: createVerifier(config.identity),
   allowedOrigins: allowedOriginsFor(config.webOrigin),
   webOrigin: config.webOrigin,
   trustProxy: config.trustProxy,

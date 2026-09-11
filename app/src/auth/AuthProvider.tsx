@@ -7,89 +7,70 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updateProfile,
-  type User,
-} from "firebase/auth";
-import { auth, googleProvider } from "../lib/firebase";
+import { startSignIn, toAuthUser, userManager, type AuthUser } from "../lib/oidc";
 import { setPasswordOwner } from "../lib/session-passwords";
 
 interface AuthValue {
-  user: User | null;
-  /* True until the first onAuthStateChanged fires, so guards do not flash. */
+  user: AuthUser | null;
+  /* True until the stored session has been read, so guards do not flash. */
   initializing: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
-  resendVerification: () => Promise<void>;
+  /** Leaves the app for the provider; resolves only if the redirect fails. */
+  signIn: (returnTo?: string) => Promise<void>;
   signOutUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (next) => {
+    let live = true;
+
+    const apply = (next: AuthUser | null) => {
+      if (!live) return;
       /* Scope any stored session password to whoever is signed in now. */
       setPasswordOwner(next?.uid ?? "");
       setUser(next);
-      setInitializing(false);
-    });
-    return unsubscribe;
+    };
+
+    /*
+     * The stored session is read once at startup; after that the manager's
+     * events are the only thing that changes it. A renewal that fails ends
+     * the session here rather than leaving a signed-in shell whose every
+     * request is refused.
+     */
+    void userManager
+      .getUser()
+      .then((found) => apply(found && !found.expired ? toAuthUser(found) : null))
+      .catch(() => apply(null))
+      .finally(() => {
+        if (live) setInitializing(false);
+      });
+
+    const onLoaded = (next: Parameters<Parameters<typeof userManager.events.addUserLoaded>[0]>[0]) =>
+      apply(toAuthUser(next));
+    const onUnloaded = () => apply(null);
+    const onExpired = () => apply(null);
+    const onRenewError = () => apply(null);
+
+    userManager.events.addUserLoaded(onLoaded);
+    userManager.events.addUserUnloaded(onUnloaded);
+    userManager.events.addAccessTokenExpired(onExpired);
+    userManager.events.addSilentRenewError(onRenewError);
+
+    return () => {
+      live = false;
+      userManager.events.removeUserLoaded(onLoaded);
+      userManager.events.removeUserUnloaded(onUnloaded);
+      userManager.events.removeAccessTokenExpired(onExpired);
+      userManager.events.removeSilentRenewError(onRenewError);
+    };
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email.trim(), password);
-  }, []);
-
-  const signUp = useCallback(
-    async (name: string, email: string, password: string) => {
-      const credential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password,
-      );
-      const displayName = name.trim();
-      if (displayName) {
-        await updateProfile(credential.user, { displayName });
-      }
-      /*
-       * Verification is best-effort. A throttled send must not strand a user
-       * who already has a working account, so failures are swallowed here and
-       * surfaced later through the resend action on the account screen.
-       */
-      try {
-        await sendEmailVerification(credential.user);
-      } catch {
-        /* resend is available from the account screen */
-      }
-      setUser({ ...credential.user } as User);
-    },
-    [],
-  );
-
-  const signInWithGoogle = useCallback(async () => {
-    await signInWithPopup(auth, googleProvider);
-  }, []);
-
-  const resetPassword = useCallback(async (email: string) => {
-    await sendPasswordResetEmail(auth, email.trim());
-  }, []);
-
-  const resendVerification = useCallback(async () => {
-    if (!auth.currentUser) throw new Error("Sign in first.");
-    await sendEmailVerification(auth.currentUser);
+  const signIn = useCallback(async (returnTo?: string) => {
+    await startSignIn({ returnTo });
   }, []);
 
   const signOutUser = useCallback(async () => {
@@ -98,31 +79,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * expose them to whoever signs in next. They are deliberately kept: they
      * are how this person reopens their own sessions, and how they share them
      * with colleagues who join later.
+     *
+     * Ending the provider's session too, not only this app's: a sign-out that
+     * left the provider's cookie in place would sign the same person straight
+     * back in on the next click, which does not look like signing out.
      */
-    await signOut(auth);
+    try {
+      await userManager.signoutRedirect();
+    } catch {
+      /*
+       * A provider with no end-session endpoint, or one that is unreachable,
+       * must not leave someone stuck signed in. Dropping the local session is
+       * the part this app can always do.
+       */
+      await userManager.removeUser();
+    }
   }, []);
 
   const value = useMemo(
-    () => ({
-      user,
-      initializing,
-      signIn,
-      signUp,
-      signInWithGoogle,
-      resetPassword,
-      resendVerification,
-      signOutUser,
-    }),
-    [
-      user,
-      initializing,
-      signIn,
-      signUp,
-      signInWithGoogle,
-      resetPassword,
-      resendVerification,
-      signOutUser,
-    ],
+    () => ({ user, initializing, signIn, signOutUser }),
+    [user, initializing, signIn, signOutUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

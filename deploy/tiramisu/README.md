@@ -34,6 +34,8 @@ See [The accounts app](#the-accounts-app) below.
 | Accounts app | `/opt/shell-online/repo/app`, `docker compose` |
 | Accounts app config | `repo/app/.env` (not committed) |
 | Accounts app vhost | `/etc/nginx/sites-available/app.shell.gakoy.com.conf` |
+| Keycloak | same compose stack, realm `shell` |
+| Keycloak vhost | `/etc/nginx/sites-available/auth.gakoy.com.conf` |
 
 The unit, the vhost and the worker configuration are committed here. The copies
 on the machine are copies; edit them here and reinstall, so the machine can be
@@ -46,6 +48,12 @@ browser ──443── nginx (TLS, shell.gakoy.com) ──► 127.0.0.1:8788 �
    │                                                                   │
    └──────────────── encrypted terminal frames ────────────────────────┘
 CLI ────────────────────────────────────────────────────────────────────┘
+
+and, for accounts:
+
+browser ──443── nginx ─┬─ app.shell.gakoy.com ──► :8083  app ──┐
+                       │                                       ├─► postgres
+                       └─ auth.gakoy.com ───────► :8084  keycloak ┘
 ```
 
 The worker listens on loopback only. Everything public goes through nginx,
@@ -177,66 +185,106 @@ it ends every persistent session; ordinary sessions are ephemeral anyway.
 
 ## The accounts app
 
-Two containers on the same machine: the React client and its API in one, and
-PostgreSQL beside it. nginx terminates TLS on `app.shell.gakoy.com` and proxies
-to `127.0.0.1:8083`; the app proxies `/relay/*` on to the relay.
+Three containers on the same machine: Keycloak, which holds the accounts; the
+React client and its API; and the PostgreSQL both of them store into, in two
+separate databases. nginx terminates TLS on two hostnames,
+`auth.gakoy.com` for Keycloak and `app.shell.gakoy.com` for the app, and the
+app proxies `/relay/*` on to the relay.
 
-It needs a Firebase project for sign-in. Nothing secret comes out of it: the
-server verifies Firebase ID tokens against Google's published JWKs and needs
-only the project id, and the `VITE_FIREBASE_*` values are the public web
-configuration that is compiled into the client anyway. There is no service
-account and no private key in this deployment.
+Nothing here depends on an account with anyone. Sign-in is Authorization Code
+with PKCE against Keycloak (Apache-2.0), which is one OpenID Connect provider
+among others: the app verifies ID tokens against whatever JWKS the configured
+issuer publishes, so swapping Keycloak for Authelia, Zitadel or Dex is two
+environment variables and no code.
 
-### 1. Firebase
+The app holds no passwords and has no screens for them. Setting one, changing
+one, resetting one and verifying an email address all happen on Keycloak's
+pages, which is why the sign-in screen is one button.
 
-In the [Firebase console](https://console.firebase.google.com/), on a project
-of your own:
+### 1. DNS and certificates
 
-1. **Authentication → Get started**, and enable the sign-in providers you want
-   (Google, or email/password).
-2. **Authentication → Settings → Authorized domains**, add
-   `app.shell.gakoy.com`. Sign-in fails with `auth/unauthorized-domain`
-   without it, which is the single most common way this goes wrong.
-3. **Project settings → Your apps → Web app** (register one if there is none).
-   Copy the five config values into `.env` below.
+Two A records in the `gakoy.com` zone, both pointing at `130.237.224.95`,
+created the same way as the relay's record above:
 
-### 2. DNS and certificate
+| Subdomain | For |
+|---|---|
+| `app.shell` | the accounts app |
+| `auth` | Keycloak |
 
-An A record for `app.shell` in the `gakoy.com` zone, pointing at
-`130.237.224.95`, created the same way as the relay's record above. Then,
-with the challenge-only vhost pattern from §3 of the relay build:
+Then, with the challenge-only vhost pattern from §3 of the relay build:
 
 ```sh
 sudo certbot certonly --webroot -w /var/www/certbot -d app.shell.gakoy.com \
   --non-interactive --agree-tos --register-unsafely-without-email
+sudo certbot certonly --webroot -w /var/www/certbot -d auth.gakoy.com \
+  --non-interactive --agree-tos --register-unsafely-without-email
 ```
 
-### 3. Configure and start
+### 2. Configure
 
 ```sh
 cd /opt/shell-online/repo/app
 cp ../deploy/tiramisu/app.env.example .env
-$EDITOR .env                       # Firebase values, POSTGRES_PASSWORD
 ln -sf ../deploy/tiramisu/docker-compose.override.yml docker-compose.override.yml
-docker compose up --build -d
-docker compose logs -f app
+```
+
+Two secrets to fill in, and nothing else is secret:
+
+```sh
+openssl rand -base64 24    # POSTGRES_PASSWORD
+openssl rand -base64 24    # KEYCLOAK_ADMIN_PASSWORD
 ```
 
 `PORT=127.0.0.1:8083` in `.env` is not a typo: the whole value is interpolated
 into the compose port spec, which is how the published port ends up bound to
 loopback without needing to override a ports list across compose files.
 
+### 3. Start
+
+```sh
+docker compose up --build -d
+docker compose logs -f keycloak app
+```
+
+Keycloak imports `keycloak-realm.json` on its first start: realm `shell`, with
+the public PKCE client `shell-online-app` already registered against
+`https://app.shell.gakoy.com/auth/callback`. Import happens **only** when the
+realm does not exist — a realm that is already there is left alone, so console
+edits survive restarts and the file is a starting point rather than the
+running truth.
+
 ```sh
 sudo cp ../deploy/tiramisu/nginx-app.shell.gakoy.com.conf \
         /etc/nginx/sites-available/app.shell.gakoy.com.conf
+sudo cp ../deploy/tiramisu/nginx-auth.gakoy.com.conf \
+        /etc/nginx/sites-available/auth.gakoy.com.conf
 sudo ln -sf /etc/nginx/sites-available/app.shell.gakoy.com.conf /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/auth.gakoy.com.conf /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Migrations in `app/server/lib/migrations/` are applied on boot, so there is no
-separate database step.
+The app's own migrations run on boot, so there is no separate database step.
 
-### 4. Point the CLI at it
+### 4. Create the people
+
+Registration is off: a realm on the public internet that lets anyone sign
+themselves up will have strangers in it. Accounts are made in the admin
+console at `https://auth.gakoy.com/admin`, signing in with `KEYCLOAK_ADMIN`
+and its password, under realm **shell** → Users → Add user. Give each one an
+email, then Credentials → Set password, temporary, so they choose their own on
+first sign-in.
+
+To let people register themselves instead: Realm settings → Login →
+User registration. Keycloak then shows a Register link on its own sign-in
+page, and the app needs no change for it.
+
+Checking it worked, before opening a browser:
+
+```sh
+curl -s https://auth.gakoy.com/realms/shell/.well-known/openid-configuration | head -c 200
+```
+
+### 5. Point the CLI at it
 
 ```sh
 export SHELL_ONLINE_SERVER=https://shell.gakoy.com
@@ -255,7 +303,7 @@ Say yes when it asks whether the browser may start sessions on this machine
 app's machine list, and it is a real capability: while it is on, anyone signed
 in to the account can run processes on that machine as you.
 
-### 5. Use agentknit from the browser
+### 6. Use agentknit from the browser
 
 In the app: **New session → agentknit**, pick the machine, fill in the model
 (the one required field) and optionally a task, endpoint, spec file, session to
@@ -269,8 +317,29 @@ cd /opt/shell-online/repo && git pull
 cd app && docker compose up --build -d
 ```
 
-`--build` rather than `restart`: the Firebase values and the relay URL are
+`--build` rather than `restart`: the provider's address and the relay URL are
 compiled into the client, so a rebuild is what picks up a changed `.env`.
+
+### When sign-in does not work
+
+- **`invalid_redirect_uri` on Keycloak's page.** The client's redirect URI has
+  to match `https://app.shell.gakoy.com/auth/callback` exactly. Admin console →
+  Clients → shell-online-app → Valid redirect URIs.
+- **Signed in, then every API call is refused.** The `aud` of the token is the
+  client id, and the app checks it: `OIDC_AUDIENCE` must equal
+  `VITE_OIDC_CLIENT_ID`. Both come from `.env`, so this means they were edited
+  apart.
+- **Signed in, then signed out again an hour later.** Silent renewal loads the
+  callback in a hidden iframe, which the browser blocks unless Keycloak allows
+  the app's origin: Clients → shell-online-app → Web origins must list
+  `https://app.shell.gakoy.com`.
+- **Keycloak serves only a "HTTPS required" page.** It is not seeing
+  `X-Forwarded-Proto`. `KC_PROXY_HEADERS=xforwarded` and the nginx vhost here
+  set that between them.
+- **Keycloak will not start, complaining about the database.** Its database is
+  created by an init script that the postgres image runs only on an empty data
+  directory. On a volume that already holds the app's database:
+  `docker compose exec postgres createdb -U postgres keycloak`.
 
 ## Things worth knowing
 
@@ -301,5 +370,6 @@ inside the snap. A major-version snap refresh is a thing to check after.
 that directory, so certbot and the renewal timer work normally. It is a shell
 environment artifact, not a broken installation.
 
-**This fork adds agentknit.** See the repository CHANGELOG. Nothing about the
-deployment depends on it; it is served because the relay serves this fork.
+**This fork adds agentknit, and replaces Firebase.** See the repository
+CHANGELOG. The relay serves this fork, so it carries both; the accounts app is
+where either of them is visible.

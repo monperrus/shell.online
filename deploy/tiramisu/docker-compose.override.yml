@@ -6,14 +6,14 @@
 #   cd /opt/shell-online/repo/app
 #   ln -sf ../deploy/tiramisu/docker-compose.override.yml docker-compose.override.yml
 #
-# Upstream leaves postgres on the compose default restart policy, so a reboot
-# would bring the app back up with its store gone. The app service already
-# restarts itself.
+# It adds Keycloak, which holds the accounts, and pins postgres to restart
+# with the machine. Upstream leaves postgres on the compose default, so a
+# reboot would bring the app back up with its store gone.
 #
-# Note what is NOT here: the published port. The upstream file publishes
-# "${PORT:-8080}:8080", which binds 0.0.0.0 and would put the app on the public
-# internet beside nginx, unencrypted. Overriding a ports list across compose
-# files needs the !override tag, which is recent; the .env sets
+# Note what is NOT here: the published port of the app. The upstream file
+# publishes "${PORT:-8080}:8080", which binds 0.0.0.0 and would put the app on
+# the public internet beside nginx, unencrypted. Overriding a ports list across
+# compose files needs the !override tag, which is recent; the .env sets
 #
 #   PORT=127.0.0.1:8083
 #
@@ -23,3 +23,57 @@
 services:
   postgres:
     restart: unless-stopped
+    volumes:
+      # Runs only on an empty data directory. On a volume that already holds
+      # the app's database, create Keycloak's by hand; the file says how.
+      - ../deploy/tiramisu/postgres-init-keycloak.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    # start --optimized would be faster, but it requires a build step whose
+    # output has to be rebuilt on every image bump. This deployment starts
+    # once in a while and can afford the few seconds.
+    command: start --import-realm
+    environment:
+      # Keycloak's own store, in the same postgres as the app's, under its own
+      # database. One server, two databases: nothing in either schema knows
+      # about the other, and a restore of one does not disturb the other.
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-dev}
+      # The public address. Keycloak puts this in the issuer of every token
+      # and in the discovery document, so it has to be the address browsers
+      # use, not the container's.
+      KC_HOSTNAME: ${KEYCLOAK_URL}
+      # TLS terminates at nginx. Without this Keycloak sees a plain HTTP
+      # request, decides the deployment is insecure, and refuses to serve
+      # anything but localhost.
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      # The first administrator. Used once, to sign in and create the realm's
+      # people; it is not an account of the app.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      # The realm is imported on first start only: Keycloak skips a realm that
+      # already exists rather than overwriting it, so edits made in the admin
+      # console survive a restart. Re-importing a changed file needs the realm
+      # deleted first, which is deliberate — it would drop the users with it.
+      - ../deploy/tiramisu/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8084}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  app:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Only that the container is up: the app discovers Keycloak's keys
+      # lazily, on the first token, so it does not need it answering at boot.
+      keycloak:
+        condition: service_started

@@ -1,4 +1,18 @@
-import { auth } from "./firebase";
+import { userManager } from "./oidc";
+
+/**
+ * The ID token for the current session, or nothing when there is none.
+ *
+ * Read from the manager on every call rather than held: a silent renew
+ * replaces the token in place, and a cached one would be handed out until it
+ * expired. An expired session is treated as no session, so the caller says
+ * "signed out" instead of sending a token the service will refuse.
+ */
+async function currentIdToken(): Promise<string | null> {
+  const user = await userManager.getUser();
+  if (!user || user.expired || !user.id_token) return null;
+  return user.id_token;
+}
 
 export { machineOnline } from "./agent";
 
@@ -198,14 +212,8 @@ export interface SessionRecord {
 class ApiError extends Error {}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const user = auth.currentUser;
-  if (!user) throw new ApiError("You are signed out. Sign in and try again.");
-
-  /*
-   * getIdToken refreshes when the cached token is close to expiry, so every
-   * call carries a token the accounts service will still accept.
-   */
-  const token = await user.getIdToken();
+  const token = await currentIdToken();
+  if (!token) throw new ApiError("You are signed out. Sign in and try again.");
   let response: Response;
   try {
     response = await fetch(`${BASE}${path}`, {
@@ -372,9 +380,8 @@ export function fetchAudit(sessionId: string) {
 
 /** The audit export needs the same bearer token, so it is fetched not linked. */
 export async function downloadAuditCsv(sessionId?: string): Promise<Blob> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("You are signed out.");
-  const token = await user.getIdToken();
+  const token = await currentIdToken();
+  if (!token) throw new Error("You are signed out.");
   const query = sessionId ? `?session=${encodeURIComponent(sessionId)}` : "";
   const response = await fetch(`${BASE}/api/audit.csv${query}`, {
     headers: { Authorization: `Bearer ${token}` },

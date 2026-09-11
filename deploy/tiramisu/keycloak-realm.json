@@ -1,0 +1,62 @@
+{
+  "_comment": [
+    "The realm shell.online signs in against. Imported on first start only:",
+    "Keycloak skips a realm that already exists rather than overwriting it, so",
+    "changes made in the admin console survive restarts and this file is the",
+    "starting point rather than the running truth.",
+    "",
+    "registrationAllowed is false: this deployment is a handful of people, and",
+    "a realm on the public internet that lets anyone register is a realm that",
+    "will have strangers in it. Accounts are created in the admin console.",
+    "Turning it on makes Keycloak show a Register link on its own sign-in page;",
+    "the app needs no change for that.",
+    "",
+    "The client is public and PKCE-only. A browser cannot keep a secret, so",
+    "there is none to keep: the proof key is what binds the authorization code",
+    "to the browser that asked for it. S256 is required rather than offered,",
+    "because a client that may fall back to `plain` gains nothing from PKCE."
+  ],
+  "realm": "shell",
+  "displayName": "shell.online",
+  "enabled": true,
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "verifyEmail": false,
+  "rememberMe": true,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "failureFactor": 10,
+  "sslRequired": "external",
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 2592000,
+  "ssoSessionMaxLifespan": 2592000,
+  "clients": [
+    {
+      "clientId": "shell-online-app",
+      "name": "shell.online",
+      "description": "The accounts app at app.shell.gakoy.com",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "https://app.shell.gakoy.com",
+      "baseUrl": "/",
+      "redirectUris": ["https://app.shell.gakoy.com/auth/callback"],
+      "webOrigins": ["https://app.shell.gakoy.com"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://app.shell.gakoy.com/login",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "backchannel.logout.session.required": "true"
+      },
+      "fullScopeAllowed": false
+    }
+  ]
+}
